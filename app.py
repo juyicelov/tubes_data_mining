@@ -132,7 +132,6 @@ for col in features:
     min_val = int(df[col].min())
     max_val = int(df[col].max())
 
-    # Keterangan tiap input
     if "age" in col.lower():
         help_text = "Usia pelanggan dalam satuan tahun"
     elif "income" in col.lower():
@@ -146,7 +145,7 @@ for col in features:
         f"Masukkan {col}",
         min_value=min_val,
         max_value=max_val,
-        step=1,           # ⬅️ memastikan bilangan bulat (tanpa .00)
+        step=1,
         help=help_text
     )
 
@@ -154,7 +153,6 @@ for col in features:
 
 # ================================
 # PREDIKSI
-؈
 # ================================
 if st.button("🔍 Prediksi Cluster"):
     new_data = np.array([input_data])
