@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, silhouette_score
 
 # ================================
-# CONFIG
+# CONFIG HALAMAN
 # ================================
 st.set_page_config(
     page_title="Clustering & Logistic Regression",
@@ -18,13 +18,17 @@ st.set_page_config(
 )
 
 st.title("📊 Clustering & Logistic Regression – Customer Segmentation")
+st.caption("Aplikasi Data Mining untuk mengelompokkan pelanggan dan memprediksi cluster")
 
 # ================================
 # UPLOAD DATASET
 # ================================
-st.subheader("📂 Upload Dataset CSV")
+st.subheader("📂 Upload Dataset")
 
-uploaded_file = st.file_uploader("Upload dataset (CSV)", type=["csv"])
+uploaded_file = st.file_uploader(
+    "Upload dataset CSV (contoh: Shopping Mall Customer Segmentation Data)",
+    type=["csv"]
+)
 
 if uploaded_file is None:
     st.warning("⚠️ Silakan upload dataset terlebih dahulu")
@@ -38,9 +42,9 @@ st.write("Kolom dataset:", list(df.columns))
 st.write(df.head())
 
 # ================================
-# PILIH FITUR (ANTI ERROR)
+# PILIH FITUR NUMERIK
 # ================================
-st.subheader("🧩 Pilih Fitur untuk Clustering")
+st.subheader("🧩 Pemilihan Fitur")
 
 numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
 
@@ -49,7 +53,7 @@ if len(numeric_columns) < 2:
     st.stop()
 
 features = st.multiselect(
-    "Pilih minimal 2 kolom numerik:",
+    "Pilih fitur numerik untuk clustering (disarankan 3 fitur):",
     numeric_columns,
     default=numeric_columns[:3]
 )
@@ -74,36 +78,36 @@ st.subheader("🔹 K-Means Clustering")
 k = st.slider("Jumlah Cluster (K)", 2, 8, 3)
 
 kmeans = KMeans(n_clusters=k, random_state=42)
-df['Cluster'] = kmeans.fit_predict(X_scaled)
+df["Cluster"] = kmeans.fit_predict(X_scaled)
 
-silhouette = silhouette_score(X_scaled, df['Cluster'])
-st.success(f"Silhouette Score: {silhouette:.3f}")
+sil_score = silhouette_score(X_scaled, df["Cluster"])
+st.success(f"Silhouette Score: {sil_score:.3f}")
 
 # ================================
-# VISUALISASI
+# VISUALISASI CLUSTER
 # ================================
-st.subheader("📈 Visualisasi Clustering")
+st.subheader("📈 Visualisasi Hasil Clustering")
 
 if len(features) >= 2:
     fig, ax = plt.subplots()
     ax.scatter(
         df[features[0]],
         df[features[1]],
-        c=df['Cluster']
+        c=df["Cluster"]
     )
     ax.set_xlabel(features[0])
     ax.set_ylabel(features[1])
-    ax.set_title("Hasil Clustering")
+    ax.set_title("Visualisasi Clustering (2D)")
     st.pyplot(fig)
 
 # ================================
 # LOGISTIC REGRESSION
 # ================================
-st.subheader("🤖 Logistic Regression")
+st.subheader("🤖 Logistic Regression (Prediksi Cluster)")
 
 X_train, X_test, y_train, y_test = train_test_split(
     X_scaled,
-    df['Cluster'],
+    df["Cluster"],
     test_size=0.2,
     random_state=42
 )
@@ -119,28 +123,52 @@ st.info(f"Akurasi Logistic Regression: {accuracy:.2f}")
 # ================================
 # INPUT DATA BARU
 # ================================
-st.subheader("📝 Input Data Baru")
+st.subheader("📝 Input Data Customer Baru")
+st.caption("Isi data berikut untuk memprediksi cluster pelanggan")
 
 input_data = []
+
 for col in features:
-    value = st.number_input(f"Masukkan {col}", float(df[col].min()), float(df[col].max()))
+    min_val = int(df[col].min())
+    max_val = int(df[col].max())
+
+    # Keterangan tiap input
+    if "age" in col.lower():
+        help_text = "Usia pelanggan dalam satuan tahun"
+    elif "income" in col.lower():
+        help_text = "Pendapatan tahunan pelanggan (biasanya dalam ribuan)"
+    elif "spending" in col.lower():
+        help_text = "Skor tingkat pengeluaran (1 = rendah, 100 = tinggi)"
+    else:
+        help_text = "Nilai numerik untuk atribut ini"
+
+    value = st.number_input(
+        f"Masukkan {col}",
+        min_value=min_val,
+        max_value=max_val,
+        step=1,           # ⬅️ memastikan bilangan bulat (tanpa .00)
+        help=help_text
+    )
+
     input_data.append(value)
 
+# ================================
+# PREDIKSI
+؈
+# ================================
 if st.button("🔍 Prediksi Cluster"):
     new_data = np.array([input_data])
     new_data_scaled = scaler.transform(new_data)
 
-    pred_kmeans = kmeans.predict(new_data_scaled)[0]
-    pred_logreg = logreg.predict(new_data_scaled)[0]
+    cluster_kmeans = kmeans.predict(new_data_scaled)[0]
+    cluster_logreg = logreg.predict(new_data_scaled)[0]
 
-    st.success(f"""
-    ✅ Hasil Prediksi:
-    - Cluster (K-Means): {pred_kmeans}
-    - Cluster (Logistic Regression): {pred_logreg}
-    """)
+    st.success("✅ Hasil Prediksi")
+    st.write(f"• Cluster (K-Means): **{cluster_kmeans}**")
+    st.write(f"• Cluster (Logistic Regression): **{cluster_logreg}**")
 
 # ================================
 # RINGKASAN CLUSTER
 # ================================
-st.subheader("📊 Rata-rata Setiap Cluster")
-st.write(df.groupby('Cluster')[features].mean())
+st.subheader("📊 Ringkasan Rata-rata Tiap Cluster")
+st.write(df.groupby("Cluster")[features].mean())
