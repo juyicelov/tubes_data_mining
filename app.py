@@ -1,151 +1,116 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, silhouette_score
 
-# =================================================
-# KONFIGURASI HALAMAN
-# =================================================
-st.set_page_config(page_title="Clustering Risiko Kanker Paru", layout="centered")
-st.title("🫁 Clustering Risiko Kanker Paru-Paru")
-st.write("Menggunakan Linear Regression dan K-Means Clustering")
+# ================================
+# CONFIG
+# ================================
+st.set_page_config(page_title="Clustering & Logistic Regression", layout="wide")
+st.title("📊 Clustering & Logistic Regression – Customer Segmentation")
 
-# =================================================
-# UPLOAD DATASET
-# =================================================
-st.header("1. Upload Dataset")
-file = st.file_uploader("Upload file CSV Dataset Lung Cancer", type=["csv"])
+# ================================
+# LOAD DATA
+# ================================
+@st.cache_data
+def load_data():
+    df = pd.read_csv("Shopping Mall Customer Segmentation Data.csv")
+    return df
 
-if file is not None:
-    data = pd.read_csv(file)
-    st.success("Dataset berhasil diupload!")
-    st.write("Contoh data:")
-    st.write(data.head())
+df = load_data()
 
-    # =================================================
-    # PREPROCESSING DATA
-    # =================================================
-    st.header("2. Preprocessing Data")
+st.subheader("📁 Dataset Preview")
+st.write(df.head())
+st.write("Jumlah Data:", df.shape[0])
 
-    data_clean = data.copy()
+# ================================
+# PREPROCESSING
+# ================================
+st.subheader("⚙️ Preprocessing")
 
-    # Ubah Yes / No menjadi 1 / 0
-    for kolom in data_clean.columns:
-        if data_clean[kolom].dtype == object:
-            data_clean[kolom] = data_clean[kolom].astype(str).str.lower()
-            if set(data_clean[kolom].unique()).issubset({"yes", "no"}):
-                data_clean[kolom] = data_clean[kolom].map({"yes": 1, "no": 0})
+features = ['Age', 'Annual Income (k$)', 'Spending Score (1-100)']
+X = df[features]
 
-    # Hapus data kosong
-    data_clean = data_clean.dropna()
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-    st.write("Data setelah preprocessing:")
-    st.write(data_clean.head())
+# ================================
+# CLUSTERING (K-MEANS)
+# ================================
+st.subheader("🔹 K-Means Clustering")
 
-    # =================================================
-    # MENENTUKAN FITUR & TARGET
-    # =================================================
-    st.header("3. Menentukan Fitur dan Target")
+k = st.slider("Pilih Jumlah Cluster (K)", 2, 6, 3)
 
-    if "LUNG_CANCER" in data_clean.columns:
-        target = "LUNG_CANCER"
-    else:
-        target = data_clean.columns[-1]
+kmeans = KMeans(n_clusters=k, random_state=42)
+df['Cluster'] = kmeans.fit_predict(X_scaled)
 
-    X = data_clean.drop(columns=[target])
-    y = data_clean[target]
+sil_score = silhouette_score(X_scaled, df['Cluster'])
 
-    st.write("Target yang digunakan:", target)
+st.success(f"Silhouette Score: {sil_score:.3f}")
 
-    # =================================================
-    # STANDARISASI DATA
-    # =================================================
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+# ================================
+# VISUALISASI CLUSTER
+# ================================
+st.subheader("📈 Visualisasi Clustering")
 
-    # =================================================
-    # LINEAR REGRESSION → RISK SCORE
-    # =================================================
-    st.header("4. Perhitungan Risk Score")
+fig, ax = plt.subplots()
+scatter = ax.scatter(
+    df['Annual Income (k$)'],
+    df['Spending Score (1-100)'],
+    c=df['Cluster']
+)
+ax.set_xlabel("Annual Income (k$)")
+ax.set_ylabel("Spending Score")
+ax.set_title("Customer Clustering")
+st.pyplot(fig)
 
-    model_lr = LinearRegression()
-    model_lr.fit(X_scaled, y)
+# ================================
+# LOGISTIC REGRESSION (CLUSTER PREDICTION)
+# ================================
+st.subheader("🤖 Logistic Regression Model")
 
-    data_clean["Risk_Score"] = model_lr.predict(X_scaled)
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, df['Cluster'], test_size=0.2, random_state=42
+)
 
-    st.write("Contoh Risk Score:")
-    st.write(data_clean[["Risk_Score"]].head())
+logreg = LogisticRegression(max_iter=1000)
+logreg.fit(X_train, y_train)
 
-    # =================================================
-    # CLUSTERING
-    # =================================================
-    st.header("5. Clustering Risiko")
+y_pred = logreg.predict(X_test)
+acc = accuracy_score(y_test, y_pred)
 
-    model_kmeans = KMeans(n_clusters=3, random_state=42)
-    data_clean["Cluster"] = model_kmeans.fit_predict(data_clean[["Risk_Score"]])
+st.info(f"Akurasi Logistic Regression: {acc:.2f}")
 
-    st.write("Hasil Clustering:")
-    st.write(data_clean[["Risk_Score", "Cluster"]].head())
+# ================================
+# INPUT DATA BARU
+# ================================
+st.subheader("📝 Input Data Customer Baru")
 
-    # =================================================
-    # VISUALISASI
-    # =================================================
-    st.header("6. Visualisasi Clustering")
+age = st.number_input("Age", 18, 80, 30)
+income = st.number_input("Annual Income (k$)", 10, 150, 50)
+score = st.number_input("Spending Score (1-100)", 1, 100, 50)
 
-    fig, ax = plt.subplots()
-    ax.scatter(data_clean["Risk_Score"], data_clean["Cluster"])
-    ax.set_xlabel("Risk Score")
-    ax.set_ylabel("Cluster")
-    ax.set_title("Grafik Clustering Berdasarkan Risk Score")
-    st.pyplot(fig)
+if st.button("🔍 Prediksi"):
+    new_data = np.array([[age, income, score]])
+    new_data_scaled = scaler.transform(new_data)
 
-    # =================================================
-    # INPUT DATA PASIEN BARU (YA / TIDAK)
-    # =================================================
-    st.header("7. Input Data Pasien Baru")
+    cluster_pred = kmeans.predict(new_data_scaled)[0]
+    logreg_pred = logreg.predict(new_data_scaled)[0]
 
-    usia = st.slider("Usia", 10, 90, 40)
+    st.success(f"""
+    🔹 Hasil Prediksi:
+    - Cluster (K-Means): {cluster_pred}
+    - Cluster (Logistic Regression): {logreg_pred}
+    """)
 
-    merokok_text = st.selectbox("Merokok", ["Tidak", "Ya"])
-    alkohol_text = st.selectbox("Konsumsi Alkohol", ["Tidak", "Ya"])
-    penyakit_kronis_text = st.selectbox("Penyakit Kronis", ["Tidak", "Ya"])
-
-    # Konversi ke angka
-    merokok = 1 if merokok_text == "Ya" else 0
-    alkohol = 1 if alkohol_text == "Ya" else 0
-    penyakit_kronis = 1 if penyakit_kronis_text == "Ya" else 0
-
-    # Isi data input (kolom lain pakai nilai rata-rata)
-    input_data = X.mean().to_dict()
-    kolom = list(X.columns)
-
-    input_data[kolom[0]] = usia
-    input_data[kolom[1]] = merokok
-    input_data[kolom[2]] = alkohol
-    input_data[kolom[3]] = penyakit_kronis
-
-    input_df = pd.DataFrame([input_data])
-
-    # =================================================
-    # HASIL PREDIKSI
-    # =================================================
-    if st.button("Lihat Hasil Risiko"):
-        input_scaled = scaler.transform(input_df)
-        risk = model_lr.predict(input_scaled)[0]
-        cluster = model_kmeans.predict([[risk]])[0]
-
-        st.success(f"Risk Score: {risk:.2f}")
-        st.info(f"Cluster Risiko: {cluster}")
-
-        if cluster == 0:
-            st.write("🟢 Risiko Rendah")
-        elif cluster == 1:
-            st.write("🟡 Risiko Sedang")
-        else:
-            st.write("🔴 Risiko Tinggi")
-
-else:
-    st.warning("Silakan upload dataset terlebih dahulu.")
+# ================================
+# DATA CLUSTER SUMMARY
+# ================================
+st.subheader("📊 Ringkasan Cluster")
+st.write(df.groupby('Cluster')[features].mean())
