@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, silhouette_score
 
 # ================================
-# CONFIG HALAMAN
+# KONFIGURASI HALAMAN
 # ================================
 st.set_page_config(
     page_title="Clustering & Logistic Regression",
@@ -18,7 +18,10 @@ st.set_page_config(
 )
 
 st.title("📊 Clustering & Logistic Regression – Customer Segmentation")
-st.caption("Aplikasi Data Mining untuk mengelompokkan pelanggan dan memprediksi cluster")
+st.caption(
+    "Aplikasi Data Mining untuk melakukan segmentasi pelanggan "
+    "menggunakan K-Means dan memprediksi cluster dengan Logistic Regression"
+)
 
 # ================================
 # UPLOAD DATASET
@@ -26,23 +29,23 @@ st.caption("Aplikasi Data Mining untuk mengelompokkan pelanggan dan memprediksi 
 st.subheader("📂 Upload Dataset")
 
 uploaded_file = st.file_uploader(
-    "Upload dataset CSV (contoh: Shopping Mall Customer Segmentation Data)",
+    "Upload dataset CSV (minimal 3000 baris)",
     type=["csv"]
 )
 
 if uploaded_file is None:
-    st.warning("⚠️ Silakan upload dataset terlebih dahulu")
+    st.warning("⚠️ Silakan upload dataset CSV terlebih dahulu")
     st.stop()
 
 df = pd.read_csv(uploaded_file)
 
 st.success("✅ Dataset berhasil dimuat")
-st.write("Jumlah baris:", df.shape[0])
+st.write("Jumlah baris data:", df.shape[0])
 st.write("Kolom dataset:", list(df.columns))
 st.write(df.head())
 
 # ================================
-# PILIH FITUR NUMERIK
+# PEMILIHAN FITUR NUMERIK
 # ================================
 st.subheader("🧩 Pemilihan Fitur")
 
@@ -59,13 +62,13 @@ features = st.multiselect(
 )
 
 if len(features) < 2:
-    st.warning("⚠️ Pilih minimal 2 fitur")
+    st.warning("⚠️ Pilih minimal 2 fitur numerik")
     st.stop()
 
 X = df[features]
 
 # ================================
-# SCALING
+# STANDARD SCALER
 # ================================
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
@@ -75,9 +78,14 @@ X_scaled = scaler.fit_transform(X)
 # ================================
 st.subheader("🔹 K-Means Clustering")
 
-k = st.slider("Jumlah Cluster (K)", 2, 8, 3)
+k = st.slider("Jumlah Cluster (K)", min_value=2, max_value=8, value=3)
 
-kmeans = KMeans(n_clusters=k, random_state=42)
+kmeans = KMeans(
+    n_clusters=k,
+    random_state=42,
+    n_init=10   # WAJIB agar tidak warning
+)
+
 df["Cluster"] = kmeans.fit_predict(X_scaled)
 
 sil_score = silhouette_score(X_scaled, df["Cluster"])
@@ -124,7 +132,7 @@ st.info(f"Akurasi Logistic Regression: {accuracy:.2f}")
 # INPUT DATA BARU
 # ================================
 st.subheader("📝 Input Data Customer Baru")
-st.caption("Isi data berikut untuk memprediksi cluster pelanggan")
+st.caption("Masukkan data pelanggan untuk memprediksi cluster")
 
 input_data = []
 
@@ -133,13 +141,13 @@ for col in features:
     max_val = int(df[col].max())
 
     if "age" in col.lower():
-        help_text = "Usia pelanggan dalam satuan tahun"
+        help_text = "Usia pelanggan (tahun)"
     elif "income" in col.lower():
-        help_text = "Pendapatan tahunan pelanggan (biasanya dalam ribuan)"
+        help_text = "Pendapatan tahunan pelanggan"
     elif "spending" in col.lower():
-        help_text = "Skor tingkat pengeluaran (1 = rendah, 100 = tinggi)"
+        help_text = "Skor tingkat pengeluaran pelanggan"
     else:
-        help_text = "Nilai numerik untuk atribut ini"
+        help_text = "Nilai numerik fitur"
 
     value = st.number_input(
         f"Masukkan {col}",
@@ -149,10 +157,10 @@ for col in features:
         help=help_text
     )
 
-    input_data.append(value)
+    input_data.append(int(value))
 
 # ================================
-# PREDIKSI
+# PREDIKSI CLUSTER
 # ================================
 if st.button("🔍 Prediksi Cluster"):
     new_data = np.array([input_data])
