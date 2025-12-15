@@ -1,35 +1,28 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
 
 # =============================
-# STREAMLIT CONFIG
+# CONFIG
 # =============================
-st.set_page_config(page_title="Lung Cancer Clustering", layout="wide")
-st.title("🧬 Lung Cancer Clustering using Linear Regression")
-st.write("Data Mining Project - Clustering berbasis Risk Score")
+st.set_page_config(page_title="Lung Cancer Clustering", layout="centered")
+st.title("🧬 Lung Cancer Risk Clustering (Simple)")
 
 # =============================
-# LOAD DATA
+# UPLOAD DATA
 # =============================
-st.subheader("1️⃣ Load Dataset")
-uploaded_file = st.file_uploader("Upload dataset CSV", type=["csv"])
+uploaded_file = st.file_uploader("Upload Dataset Lung Cancer (CSV)", type=["csv"])
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
-    st.success("Dataset berhasil dimuat!")
-    st.write(df.head())
 
     # =============================
-    # DATA PREPROCESSING
+    # PREPROCESSING SEDERHANA
     # =============================
-    st.subheader("2️⃣ Data Preprocessing")
     df_clean = df.copy()
 
     for col in df_clean.columns:
@@ -39,96 +32,69 @@ if uploaded_file is not None:
                 df_clean[col] = df_clean[col].map({"yes": 1, "no": 0})
 
     df_clean = df_clean.dropna()
-    st.write("Data setelah preprocessing:")
-    st.write(df_clean.head())
 
     # =============================
-    # FEATURE & TARGET
+    # PILIH TARGET
     # =============================
-    st.subheader("3️⃣ Feature Selection")
-
-    if "lung_cancer" in df_clean.columns.str.lower():
-        target_col = [c for c in df_clean.columns if c.lower() == "lung_cancer"][0]
-    else:
-        target_col = df_clean.columns[-1]
+    target_col = "LUNG_CANCER" if "LUNG_CANCER" in df_clean.columns else df_clean.columns[-1]
 
     X = df_clean.drop(columns=[target_col])
     y = df_clean[target_col]
 
-    st.write("Target:", target_col)
-
     # =============================
-    # STANDARDIZATION
+    # TRAIN MODEL
     # =============================
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
-    # =============================
-    # LINEAR REGRESSION
-    # =============================
-    st.subheader("4️⃣ Linear Regression (Risk Score)")
     lr = LinearRegression()
     lr.fit(X_scaled, y)
 
     df_clean["Risk_Score"] = lr.predict(X_scaled)
 
-    # =============================
-    # CLUSTERING
-    # =============================
-    st.subheader("5️⃣ Clustering")
-    k = st.slider("Jumlah Cluster", 2, 6, 3)
-
-    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans = KMeans(n_clusters=3, random_state=42)
     df_clean["Cluster"] = kmeans.fit_predict(df_clean[["Risk_Score"]])
 
-    silhouette = silhouette_score(df_clean[["Risk_Score"]], df_clean["Cluster"])
-    st.write("Silhouette Score:", round(silhouette, 3))
+    st.success("Model siap digunakan!")
 
     # =============================
-    # VISUALISASI
+    # INPUT SEDERHANA (HANYA 4)
     # =============================
-    st.subheader("6️⃣ Visualisasi Clustering")
-    fig, ax = plt.subplots()
-    ax.scatter(df_clean["Risk_Score"], df_clean["Cluster"])
-    ax.set_xlabel("Risk Score")
-    ax.set_ylabel("Cluster")
-    st.pyplot(fig)
+    st.subheader("🧍 Input Data Pasien")
 
-    # =============================
-    # INPUT DATA BARU
-    # =============================
-    st.subheader("7️⃣ Input Data Pasien Baru")
+    age = st.slider("Usia", 10, 90, 40)
+    smoking = st.selectbox("Merokok", [0, 1])
+    alcohol = st.selectbox("Konsumsi Alkohol", [0, 1])
+    chronic = st.selectbox("Penyakit Kronis", [0, 1])
 
-    input_data = {}
-    for col in X.columns:
-        input_data[col] = st.number_input(f"{col}", value=float(X[col].mean()))
+    # Ambil rata-rata kolom lain
+    input_data = X.mean().to_dict()
+    input_data.update({
+        X.columns[0]: age,
+        X.columns[1]: smoking,
+        X.columns[2]: alcohol,
+        X.columns[3]: chronic
+    })
 
     input_df = pd.DataFrame([input_data])
 
-    if st.button("Prediksi Risiko & Cluster"):
+    # =============================
+    # PREDIKSI
+    # =============================
+    if st.button("Prediksi Risiko"):
         input_scaled = scaler.transform(input_df)
-        risk_pred = lr.predict(input_scaled)[0]
-        cluster_pred = kmeans.predict([[risk_pred]])[0]
+        risk = lr.predict(input_scaled)[0]
+        cluster = kmeans.predict([[risk]])[0]
 
-        st.success("✅ Prediksi Berhasil!")
-        st.write(f"**Risk Score:** {risk_pred:.3f}")
-        st.write(f"**Cluster Risiko:** {cluster_pred}")
+        st.success(f"Risk Score: {risk:.2f}")
+        st.info(f"Cluster Risiko: {cluster}")
 
-        if cluster_pred == 0:
-            st.info("Risiko Rendah")
-        elif cluster_pred == 1:
-            st.warning("Risiko Sedang")
+        if cluster == 0:
+            st.write("🟢 Risiko Rendah")
+        elif cluster == 1:
+            st.write("🟡 Risiko Sedang")
         else:
-            st.error("Risiko Tinggi")
-
-    # =============================
-    # INTERPRETASI CLUSTER
-    # =============================
-    st.subheader("8️⃣ Interpretasi Cluster")
-    st.write(
-        df_clean.groupby("Cluster")["Risk_Score"]
-        .agg(["min", "mean", "max"])
-    )
+            st.write("🔴 Risiko Tinggi")
 
 else:
-    st.warning("Silakan upload dataset Lung Cancer CSV terlebih dahulu.")
+    st.info("Silakan upload dataset untuk memulai.")
