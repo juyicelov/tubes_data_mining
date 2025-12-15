@@ -2,12 +2,15 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
 
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, silhouette_score
+# ================================
+# LOAD MODEL & PREPROCESSING
+# ================================
+scaler = pickle.load(open("scaler.pkl", "rb"))
+kmeans = pickle.load(open("kmeans_model.pkl", "rb"))
+logreg = pickle.load(open("logreg_model.pkl", "rb"))
+features = pickle.load(open("features.pkl", "rb"))
 
 # ================================
 # KONFIGURASI HALAMAN
@@ -19,77 +22,40 @@ st.set_page_config(
 
 st.title("📊 Clustering & Logistic Regression – Customer Segmentation")
 st.caption(
-    "Aplikasi Data Mining untuk melakukan segmentasi pelanggan "
-    "menggunakan K-Means dan memprediksi cluster dengan Logistic Regression"
+    "Aplikasi Data Mining untuk segmentasi pelanggan menggunakan "
+    "K-Means dan prediksi cluster dengan Logistic Regression"
 )
 
 # ================================
-# UPLOAD DATASET
+# UPLOAD DATASET (UNTUK VISUALISASI SAJA)
 # ================================
 st.subheader("📂 Upload Dataset")
 
 uploaded_file = st.file_uploader(
-    "Upload dataset CSV (minimal 3000 baris)",
+    "Upload dataset CSV",
     type=["csv"]
 )
 
 if uploaded_file is None:
-    st.warning("⚠️ Silakan upload dataset CSV terlebih dahulu")
+    st.warning("⚠️ Silakan upload dataset CSV")
     st.stop()
 
 df = pd.read_csv(uploaded_file)
 
 st.success("✅ Dataset berhasil dimuat")
 st.write("Jumlah baris data:", df.shape[0])
-st.write("Kolom dataset:", list(df.columns))
 st.write(df.head())
 
 # ================================
-# PEMILIHAN FITUR NUMERIK
+# AMBIL FITUR SESUAI MODEL
 # ================================
-st.subheader("🧩 Pemilihan Fitur")
-
-numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
-
-if len(numeric_columns) < 2:
-    st.error("Dataset harus memiliki minimal 2 kolom numerik")
-    st.stop()
-
-features = st.multiselect(
-    "Pilih fitur numerik untuk clustering (disarankan 3 fitur):",
-    numeric_columns,
-    default=numeric_columns[:3]
-)
-
-if len(features) < 2:
-    st.warning("⚠️ Pilih minimal 2 fitur numerik")
-    st.stop()
-
 X = df[features]
+X_scaled = scaler.transform(X)
 
 # ================================
-# STANDARD SCALER
+# PREDIKSI CLUSTER DATASET
 # ================================
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
-
-# ================================
-# K-MEANS CLUSTERING
-# ================================
-st.subheader("🔹 K-Means Clustering")
-
-k = st.slider("Jumlah Cluster (K)", min_value=2, max_value=8, value=3)
-
-kmeans = KMeans(
-    n_clusters=k,
-    random_state=42,
-    n_init=10   # WAJIB agar tidak warning
-)
-
-df["Cluster"] = kmeans.fit_predict(X_scaled)
-
-sil_score = silhouette_score(X_scaled, df["Cluster"])
-st.success(f"Silhouette Score: {sil_score:.3f}")
+df["Cluster"] = kmeans.predict(X_scaled)
 
 # ================================
 # VISUALISASI CLUSTER
@@ -109,26 +75,6 @@ if len(features) >= 2:
     st.pyplot(fig)
 
 # ================================
-# LOGISTIC REGRESSION
-# ================================
-st.subheader("🤖 Logistic Regression (Prediksi Cluster)")
-
-X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled,
-    df["Cluster"],
-    test_size=0.2,
-    random_state=42
-)
-
-logreg = LogisticRegression(max_iter=1000)
-logreg.fit(X_train, y_train)
-
-y_pred = logreg.predict(X_test)
-accuracy = accuracy_score(y_test, y_pred)
-
-st.info(f"Akurasi Logistic Regression: {accuracy:.2f}")
-
-# ================================
 # INPUT DATA BARU
 # ================================
 st.subheader("📝 Input Data Customer Baru")
@@ -140,27 +86,17 @@ for col in features:
     min_val = int(df[col].min())
     max_val = int(df[col].max())
 
-    if "age" in col.lower():
-        help_text = "Usia pelanggan (tahun)"
-    elif "income" in col.lower():
-        help_text = "Pendapatan tahunan pelanggan"
-    elif "spending" in col.lower():
-        help_text = "Skor tingkat pengeluaran pelanggan"
-    else:
-        help_text = "Nilai numerik fitur"
-
     value = st.number_input(
         f"Masukkan {col}",
         min_value=min_val,
         max_value=max_val,
-        step=1,
-        help=help_text
+        step=1
     )
 
-    input_data.append(int(value))
+    input_data.append(value)
 
 # ================================
-# PREDIKSI CLUSTER
+# PREDIKSI CLUSTER DATA BARU
 # ================================
 if st.button("🔍 Prediksi Cluster"):
     new_data = np.array([input_data])
