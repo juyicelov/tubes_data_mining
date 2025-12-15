@@ -1,85 +1,110 @@
-# =========================================
-# CLUSTERING & PREDIKSI PENYAKIT JANTUNG
-# =========================================
-
+import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, classification_report
+st.set_page_config(page_title="Clustering & Prediksi Penyakit")
 
-# =========================================
-# 1. LOAD DATASET
-# =========================================
-df = pd.read_csv("heart_disease_dataset.csv")
+st.title("🩺 Clustering & Prediksi Penyakit (Streamlit)")
 
-print("Jumlah data:", df.shape)
-print(df.head())
+# ================================
+# UPLOAD DATASET
+# ================================
+uploaded_file = st.file_uploader("Upload dataset CSV penyakit", type=["csv"])
 
-# =========================================
-# 2. CLUSTERING (UNSUPERVISED)
-# =========================================
-X_cluster = df.drop(columns=["target"])
+if uploaded_file is None:
+    st.stop()
 
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X_cluster)
+df = pd.read_csv(uploaded_file)
+df = df.select_dtypes(include=np.number)
 
-kmeans = KMeans(n_clusters=3, random_state=42)
-clusters = kmeans.fit_predict(X_scaled)
+st.success("Dataset berhasil dimuat")
+st.write("Jumlah data:", df.shape[0])
+st.dataframe(df.head())
 
-df["Cluster"] = clusters
+# ================================
+# PILIH TARGET
+# ================================
+target = st.selectbox("Pilih kolom penyakit (0/1)", df.columns)
 
-print("\nHasil clustering:")
-print(df["Cluster"].value_counts())
+X = df.drop(columns=[target]).values
+y = df[target].values
 
-# =========================================
-# 3. VISUALISASI CLUSTER (PCA)
-# =========================================
-pca = PCA(n_components=2)
-X_pca = pca.fit_transform(X_scaled)
+# ================================
+# NORMALISASI (MANUAL)
+# ================================
+X = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
 
-plt.figure(figsize=(8,6))
-plt.scatter(X_pca[:,0], X_pca[:,1], c=clusters, cmap="viridis")
-plt.xlabel("PCA 1")
-plt.ylabel("PCA 2")
-plt.title("Visualisasi Clustering Pasien")
-plt.show()
+# ================================
+# K-MEANS MANUAL
+# ================================
+st.header("🔹 Clustering Pasien")
 
-# =========================================
-# 4. PREDIKSI PENYAKIT (SUPERVISED)
-# =========================================
-X = df.drop(columns=["target", "Cluster"])
-y = df["target"]
+k = st.slider("Jumlah Cluster", 2, 6, 3)
 
-X_scaled = scaler.fit_transform(X)
+def kmeans_manual(X, k, iter=50):
+    np.random.seed(42)
+    centroids = X[np.random.choice(len(X), k, replace=False)]
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled, y, test_size=0.2, random_state=42
-)
+    for _ in range(iter):
+        distances = np.linalg.norm(X[:, None] - centroids, axis=2)
+        labels = np.argmin(distances, axis=1)
 
-model = LogisticRegression(max_iter=2000)
-model.fit(X_train, y_train)
+        new_centroids = np.array([
+            X[labels == i].mean(axis=0) if len(X[labels == i]) > 0 else centroids[i]
+            for i in range(k)
+        ])
 
-y_pred = model.predict(X_test)
+        if np.allclose(centroids, new_centroids):
+            break
 
-print("\nAkurasi Model:", accuracy_score(y_test, y_pred))
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred))
+        centroids = new_centroids
 
-# =========================================
-# 5. PREDIKSI DATA BARU
-# =========================================
-data_baru = np.array([[52,1,0,125,212,0,1,168,0,1.0,1,2,3]])
-data_baru_scaled = scaler.transform(data_baru)
+    return labels, centroids
 
-hasil = model.predict(data_baru_scaled)
+if st.button("Jalankan Clustering"):
+    labels, centroids = kmeans_manual(X, k)
 
-if hasil[0] == 1:
-    print("\nPasien berpotensi MEMILIKI penyakit jantung")
-else:
-    print("\nPasien TIDAK memiliki penyakit jantung")
+    df["Cluster"] = labels
+    st.write("Jumlah data per cluster:")
+    st.write(df["Cluster"].value_counts())
+
+    # ================================
+    # PCA MANUAL (2D)
+    # ================================
+    X_centered = X - X.mean(axis=0)
+    cov = np.cov(X_centered.T)
+    eig_vals, eig_vecs = np.linalg.eig(cov)
+    idx = np.argsort(eig_vals)[::-1]
+    W = eig_vecs[:, idx[:2]]
+    X_pca = X_centered @ W
+
+    fig, ax = plt.subplots()
+    ax.scatter(X_pca[:, 0], X_pca[:, 1], c=labels)
+    ax.set_title("Visualisasi Clustering (PCA)")
+    st.pyplot(fig)
+
+# ================================
+# PREDIKSI PENYAKIT (NEAREST CENTROID)
+# ================================
+st.header("🧠 Prediksi Penyakit")
+
+input_data = []
+for col in df.drop(columns=[target]).columns:
+    val = st.number_input(col, value=0.0)
+    input_data.append(val)
+
+if st.button("Prediksi Penyakit"):
+    input_array = np.array(input_data)
+    input_array = (input_array - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
+
+    distances = np.linalg.norm(centroids - input_array, axis=1)
+    nearest_cluster = np.argmin(distances)
+
+    cluster_targets = y[df["Cluster"] == nearest_cluster]
+    prediction = int(cluster_targets.mean() >= 0.5)
+
+    if prediction == 1:
+        st.error("⚠️ Pasien berpotensi MEMILIKI penyakit")
+    else:
+        st.success("✅ Pasien TIDAK memiliki penyakit")
