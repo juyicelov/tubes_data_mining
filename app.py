@@ -22,31 +22,47 @@ st.title("📊 Clustering & Logistic Regression – Customer Segmentation")
 # ================================
 # UPLOAD DATASET
 # ================================
-st.subheader("📂 Upload Dataset Kaggle (CSV)")
+st.subheader("📂 Upload Dataset CSV")
 
-uploaded_file = st.file_uploader(
-    "Upload file Shopping Mall Customer Segmentation Data (CSV)",
-    type=["csv"]
-)
+uploaded_file = st.file_uploader("Upload dataset (CSV)", type=["csv"])
 
 if uploaded_file is None:
-    st.warning("⚠️ Silakan upload dataset CSV terlebih dahulu.")
+    st.warning("⚠️ Silakan upload dataset terlebih dahulu")
     st.stop()
 
 df = pd.read_csv(uploaded_file)
 
-st.success("✅ Dataset berhasil dimuat!")
-st.write("Jumlah Data:", df.shape[0])
+st.success("✅ Dataset berhasil dimuat")
+st.write("Jumlah baris:", df.shape[0])
+st.write("Kolom dataset:", list(df.columns))
 st.write(df.head())
 
 # ================================
-# PREPROCESSING
+# PILIH FITUR (ANTI ERROR)
 # ================================
-st.subheader("⚙️ Preprocessing")
+st.subheader("🧩 Pilih Fitur untuk Clustering")
 
-features = ['Age', 'Annual Income (k$)', 'Spending Score (1-100)']
+numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+
+if len(numeric_columns) < 2:
+    st.error("Dataset harus memiliki minimal 2 kolom numerik")
+    st.stop()
+
+features = st.multiselect(
+    "Pilih minimal 2 kolom numerik:",
+    numeric_columns,
+    default=numeric_columns[:3]
+)
+
+if len(features) < 2:
+    st.warning("⚠️ Pilih minimal 2 fitur")
+    st.stop()
+
 X = df[features]
 
+# ================================
+# SCALING
+# ================================
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
@@ -55,7 +71,7 @@ X_scaled = scaler.fit_transform(X)
 # ================================
 st.subheader("🔹 K-Means Clustering")
 
-k = st.slider("Jumlah Cluster (K)", 2, 6, 3)
+k = st.slider("Jumlah Cluster (K)", 2, 8, 3)
 
 kmeans = KMeans(n_clusters=k, random_state=42)
 df['Cluster'] = kmeans.fit_predict(X_scaled)
@@ -66,18 +82,19 @@ st.success(f"Silhouette Score: {silhouette:.3f}")
 # ================================
 # VISUALISASI
 # ================================
-st.subheader("📈 Visualisasi Hasil Clustering")
+st.subheader("📈 Visualisasi Clustering")
 
-fig, ax = plt.subplots()
-ax.scatter(
-    df['Annual Income (k$)'],
-    df['Spending Score (1-100)'],
-    c=df['Cluster']
-)
-ax.set_xlabel("Annual Income (k$)")
-ax.set_ylabel("Spending Score")
-ax.set_title("Customer Segmentation (K-Means)")
-st.pyplot(fig)
+if len(features) >= 2:
+    fig, ax = plt.subplots()
+    ax.scatter(
+        df[features[0]],
+        df[features[1]],
+        c=df['Cluster']
+    )
+    ax.set_xlabel(features[0])
+    ax.set_ylabel(features[1])
+    ax.set_title("Hasil Clustering")
+    st.pyplot(fig)
 
 # ================================
 # LOGISTIC REGRESSION
@@ -102,12 +119,28 @@ st.info(f"Akurasi Logistic Regression: {accuracy:.2f}")
 # ================================
 # INPUT DATA BARU
 # ================================
-st.subheader("📝 Input Data Customer Baru")
+st.subheader("📝 Input Data Baru")
 
-age = st.number_input("Age", 18, 80, 30)
-income = st.number_input("Annual Income (k$)", 10, 200, 50)
-score = st.number_input("Spending Score (1–100)", 1, 100, 50)
+input_data = []
+for col in features:
+    value = st.number_input(f"Masukkan {col}", float(df[col].min()), float(df[col].max()))
+    input_data.append(value)
 
 if st.button("🔍 Prediksi Cluster"):
-    new_data = np.array([[age, income, score]])
-    new_data_scaled = scaler.tra
+    new_data = np.array([input_data])
+    new_data_scaled = scaler.transform(new_data)
+
+    pred_kmeans = kmeans.predict(new_data_scaled)[0]
+    pred_logreg = logreg.predict(new_data_scaled)[0]
+
+    st.success(f"""
+    ✅ Hasil Prediksi:
+    - Cluster (K-Means): {pred_kmeans}
+    - Cluster (Logistic Regression): {pred_logreg}
+    """)
+
+# ================================
+# RINGKASAN CLUSTER
+# ================================
+st.subheader("📊 Rata-rata Setiap Cluster")
+st.write(df.groupby('Cluster')[features].mean())
