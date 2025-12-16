@@ -9,18 +9,18 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import silhouette_score, accuracy_score
 
 # ================================
-# CONFIG
+# PAGE CONFIG
 # ================================
 st.set_page_config(
     page_title="Lung Cancer Clustering",
     layout="wide"
 )
 
-st.title("🫁 Lung Cancer Dataset – KMeans & Logistic Regression")
-st.caption("Clustering pasien dan prediksi cluster data baru")
+st.title("🫁 Lung Cancer Clustering")
+st.caption("K-Means & Logistic Regression dengan Input Data Baru")
 
 # ================================
-# UPLOAD DATASET
+# UPLOAD DATA
 # ================================
 uploaded_file = st.file_uploader(
     "Upload Lung Cancer Dataset (CSV)",
@@ -28,34 +28,29 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file is None:
-    st.warning("⚠️ Upload dataset terlebih dahulu")
     st.stop()
 
 df = pd.read_csv(uploaded_file)
 
-st.success("✅ Dataset berhasil dimuat")
+st.success("Dataset berhasil dimuat")
 st.write("Jumlah baris:", df.shape[0])
-st.write("Jumlah kolom:", df.shape[1])
 
 # ================================
-# PISAHKAN FITUR & TARGET
+# TARGET & FEATURES
 # ================================
-target_col = "PULMONARY_DISEASE"
+TARGET = "PULMONARY_DISEASE"
 
-if target_col not in df.columns:
+if TARGET not in df.columns:
     st.error("Kolom PULMONARY_DISEASE tidak ditemukan")
     st.stop()
 
-X = df.drop(columns=[target_col])
-y = df[target_col]
+# ambil fitur numerik saja
+X = df.drop(columns=[TARGET])
+X = X.select_dtypes(include=["int64", "float64"])
 
-# pastikan numerik
-num_cols = X.select_dtypes(include=["int64", "float64"]).columns.tolist()
-
-st.subheader("📌 Fitur yang Digunakan untuk Clustering")
-st.write(num_cols)
-
-X = X[num_cols].dropna()
+# buang missing value dan sinkronkan df
+df_clean = df.loc[X.dropna().index].copy()
+X = X.dropna()
 
 # ================================
 # SCALING
@@ -66,9 +61,9 @@ X_scaled = scaler.fit_transform(X)
 # ================================
 # KMEANS
 # ================================
-st.subheader("🔧 K-Means Clustering")
+st.subheader("🔧 K-Means")
 
-k = st.slider("Jumlah Cluster (k)", 2, 6, 3)
+k = st.slider("Jumlah Cluster", 2, 6, 3)
 
 kmeans = KMeans(
     n_clusters=k,
@@ -77,56 +72,59 @@ kmeans = KMeans(
 )
 
 clusters = kmeans.fit_predict(X_scaled)
-df.loc[X.index, "Cluster"] = clusters
+df_clean["Cluster"] = clusters
 
-# ================================
-# EVALUASI CLUSTER
-# ================================
-sil_score = silhouette_score(X_scaled, clusters)
-st.info(f"📈 Silhouette Score: **{sil_score:.3f}**")
+sil = silhouette_score(X_scaled, clusters)
+st.info(f"Silhouette Score: {sil:.3f}")
 
 # ================================
 # LOGISTIC REGRESSION
 # ================================
-st.subheader("🤖 Logistic Regression (Prediksi Cluster)")
+st.subheader("🤖 Logistic Regression")
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled,
-    clusters,
-    test_size=0.2,
-    random_state=42
-)
+# pastikan cluster > 1 kelas
+if len(np.unique(clusters)) < 2:
+    st.warning("Cluster hanya 1 kelas, Logistic Regression dilewati")
+else:
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_scaled,
+        clusters,
+        test_size=0.2,
+        random_state=42
+    )
 
-logreg = LogisticRegression(max_iter=1000)
-logreg.fit(X_train, y_train)
+    logreg = LogisticRegression(max_iter=1000)
+    logreg.fit(X_train, y_train)
 
-y_pred = logreg.predict(X_test)
-acc = accuracy_score(y_test, y_pred)
+    y_pred = logreg.predict(X_test)
+    acc = accuracy_score(y_test, y_pred)
 
-st.success(f"🎯 Akurasi Logistic Regression: **{acc:.3f}**")
+    st.success(f"Akurasi Logistic Regression: {acc:.3f}")
 
 # ================================
 # INPUT DATA BARU
 # ================================
-st.subheader("✍️ Input Data Pasien Baru")
+st.subheader("✍️ Input Data Baru")
 
 input_data = []
-for col in num_cols:
+for col in X.columns:
     val = st.number_input(
-        f"{col}",
+        col,
         value=float(X[col].mean())
     )
     input_data.append(val)
 
-if st.button("🔮 Prediksi Cluster"):
+if st.button("Prediksi Cluster"):
     input_array = np.array(input_data).reshape(1, -1)
     input_scaled = scaler.transform(input_array)
-    predicted_cluster = logreg.predict(input_scaled)[0]
+    pred_cluster = kmeans.predict(input_scaled)[0]
 
-    st.success(f"✅ Pasien masuk ke **Cluster {predicted_cluster}**")
+    st.success(f"Pasien masuk ke Cluster {pred_cluster}")
 
 # ================================
-# DATA PREVIEW
+# PREVIEW DATA
 # ================================
-st.subheader("📄 Contoh Data + Cluster")
-st.dataframe(df[[*num_cols, target_col, "Cluster"]].head(20))
+st.subheader("📄 Data + Cluster")
+st.dataframe(
+    df_clean[[*X.columns, TARGET, "Cluster"]].head(20)
+)
