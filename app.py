@@ -7,7 +7,6 @@ from sklearn.cluster import KMeans
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import silhouette_score, accuracy_score
-from sklearn.decomposition import PCA
 
 # ================================
 # KONFIGURASI HALAMAN
@@ -79,25 +78,12 @@ sil_score = silhouette_score(X_scaled, clusters)
 st.metric("Silhouette Score", round(sil_score, 3))
 
 # ================================
-# VISUALISASI CLUSTER (STREAMLIT NATIVE)
+# VISUALISASI DISTRIBUSI CLUSTER
 # ================================
-st.subheader("📊 Visualisasi Cluster (PCA 2D)")
+st.subheader("📊 Distribusi Cluster")
 
-pca = PCA(n_components=2)
-X_pca = pca.fit_transform(X_scaled)
-
-viz_df = pd.DataFrame({
-    "PCA1": X_pca[:, 0],
-    "PCA2": X_pca[:, 1],
-    "Cluster": clusters
-})
-
-st.scatter_chart(
-    viz_df,
-    x="PCA1",
-    y="PCA2",
-    color="Cluster"
-)
+cluster_counts = df["Cluster"].value_counts().sort_index()
+st.bar_chart(cluster_counts)
 
 # ================================
 # LOGISTIC REGRESSION
@@ -139,7 +125,6 @@ with st.form("input_form"):
                 float(df[col].min()),
                 float(df[col].max())
             )
-
     submit = st.form_submit_button("Prediksi Cluster")
 
 if submit:
