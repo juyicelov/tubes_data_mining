@@ -1,116 +1,160 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import pickle
 
-# ================================
-# LOAD MODEL & PREPROCESSING
-# ================================
-scaler = pickle.load(open("scaler.pkl", "rb"))
-kmeans = pickle.load(open("kmeans_model.pkl", "rb"))
-logreg = pickle.load(open("logreg_model.pkl", "rb"))
-features = pickle.load(open("features.pkl", "rb"))
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import silhouette_score, accuracy_score
+from sklearn.decomposition import PCA
 
 # ================================
 # KONFIGURASI HALAMAN
 # ================================
 st.set_page_config(
-    page_title="Clustering & Logistic Regression",
+    page_title="Lung Cancer Clustering",
     layout="wide"
 )
 
-st.title("📊 Clustering & Logistic Regression – Customer Segmentation")
-st.caption(
-    "Aplikasi Data Mining untuk segmentasi pelanggan menggunakan "
-    "K-Means dan prediksi cluster dengan Logistic Regression"
-)
+st.title("🫁 Lung Cancer Clustering")
+st.caption("Metode: K-Means & Logistic Regression")
 
 # ================================
-# UPLOAD DATASET (UNTUK VISUALISASI SAJA)
+# UPLOAD DATASET
 # ================================
-st.subheader("📂 Upload Dataset")
-
 uploaded_file = st.file_uploader(
-    "Upload dataset CSV",
+    "Upload Dataset Lung Cancer (CSV)",
     type=["csv"]
 )
 
 if uploaded_file is None:
-    st.warning("⚠️ Silakan upload dataset CSV")
+    st.warning("Silakan upload dataset CSV terlebih dahulu")
     st.stop()
 
 df = pd.read_csv(uploaded_file)
+st.success("Dataset berhasil dimuat")
 
-st.success("✅ Dataset berhasil dimuat")
-st.write("Jumlah baris data:", df.shape[0])
-st.write(df.head())
-
-# ================================
-# AMBIL FITUR SESUAI MODEL
-# ================================
-X = df[features]
-X_scaled = scaler.transform(X)
+st.write("Jumlah data:", df.shape[0])
+st.dataframe(df.head())
 
 # ================================
-# PREDIKSI CLUSTER DATASET
+# PREPROCESSING
 # ================================
-df["Cluster"] = kmeans.predict(X_scaled)
+st.subheader("⚙️ Preprocessing Data")
+
+df_proc = df.copy()
+label_encoders = {}
+
+for col in df_proc.columns:
+    if df_proc[col].dtype == "object":
+        le = LabelEncoder()
+        df_proc[col] = le.fit_transform(df_proc[col])
+        label_encoders[col] = le
+
+X = df_proc
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+st.success("Encoding & Standardisasi selesai")
 
 # ================================
-# VISUALISASI CLUSTER
+# K-MEANS CLUSTERING
 # ================================
-st.subheader("📈 Visualisasi Hasil Clustering")
+st.subheader("🔹 K-Means Clustering")
 
-if len(features) >= 2:
-    fig, ax = plt.subplots()
-    ax.scatter(
-        df[features[0]],
-        df[features[1]],
-        c=df["Cluster"]
-    )
-    ax.set_xlabel(features[0])
-    ax.set_ylabel(features[1])
-    ax.set_title("Visualisasi Clustering (2D)")
-    st.pyplot(fig)
+k = st.slider("Jumlah Cluster (K)", 2, 6, 3)
+
+kmeans = KMeans(
+    n_clusters=k,
+    random_state=42,
+    n_init=20
+)
+
+clusters = kmeans.fit_predict(X_scaled)
+df["Cluster"] = clusters
+
+sil_score = silhouette_score(X_scaled, clusters)
+st.metric("Silhouette Score", round(sil_score, 3))
+
+# ================================
+# VISUALISASI CLUSTER (STREAMLIT NATIVE)
+# ================================
+st.subheader("📊 Visualisasi Cluster (PCA 2D)")
+
+pca = PCA(n_components=2)
+X_pca = pca.fit_transform(X_scaled)
+
+viz_df = pd.DataFrame({
+    "PCA1": X_pca[:, 0],
+    "PCA2": X_pca[:, 1],
+    "Cluster": clusters
+})
+
+st.scatter_chart(
+    viz_df,
+    x="PCA1",
+    y="PCA2",
+    color="Cluster"
+)
+
+# ================================
+# LOGISTIC REGRESSION
+# ================================
+st.subheader("🔹 Logistic Regression (Prediksi Cluster)")
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled,
+    df["Cluster"],
+    test_size=0.2,
+    random_state=42
+)
+
+logreg = LogisticRegression(max_iter=1000)
+logreg.fit(X_train, y_train)
+
+y_pred = logreg.predict(X_test)
+acc = accuracy_score(y_test, y_pred)
+
+st.metric("Akurasi Logistic Regression", round(acc, 3))
 
 # ================================
 # INPUT DATA BARU
 # ================================
-st.subheader("📝 Input Data Customer Baru")
-st.caption("Masukkan data pelanggan untuk memprediksi cluster")
+st.subheader("🧪 Input Data Pasien Baru")
 
-input_data = []
+input_data = {}
 
-for col in features:
-    min_val = int(df[col].min())
-    max_val = int(df[col].max())
+with st.form("input_form"):
+    for col in df_proc.columns:
+        if col in label_encoders:
+            input_data[col] = st.selectbox(
+                col,
+                label_encoders[col].classes_
+            )
+        else:
+            input_data[col] = st.number_input(
+                col,
+                float(df[col].min()),
+                float(df[col].max())
+            )
 
-    value = st.number_input(
-        f"Masukkan {col}",
-        min_value=min_val,
-        max_value=max_val,
-        step=1
-    )
+    submit = st.form_submit_button("Prediksi Cluster")
 
-    input_data.append(value)
+if submit:
+    input_df = pd.DataFrame([input_data])
+
+    for col, le in label_encoders.items():
+        input_df[col] = le.transform(input_df[col])
+
+    input_scaled = scaler.transform(input_df)
+    predicted_cluster = kmeans.predict(input_scaled)[0]
+
+    st.success(f"Pasien termasuk ke **Cluster {predicted_cluster}**")
 
 # ================================
-# PREDIKSI CLUSTER DATA BARU
+# DATA AKHIR
 # ================================
-if st.button("🔍 Prediksi Cluster"):
-    new_data = np.array([input_data])
-    new_data_scaled = scaler.transform(new_data)
-
-    cluster_kmeans = kmeans.predict(new_data_scaled)[0]
-    cluster_logreg = logreg.predict(new_data_scaled)[0]
-
-    st.success("✅ Hasil Prediksi")
-    st.write(f"• Cluster (K-Means): **{cluster_kmeans}**")
-    st.write(f"• Cluster (Logistic Regression): **{cluster_logreg}**")
-
-# ================================
-# RINGKASAN CLUSTER
-# ================================
-st.subheader("📊 Ringkasan Rata-rata Tiap Cluster")
-st.write(df.groupby("Cluster")[features].mean())
+st.subheader("📄 Contoh Data dengan Cluster")
+st.dataframe(df.head(10))
